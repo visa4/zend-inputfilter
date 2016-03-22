@@ -134,59 +134,20 @@ class Factory
     }
 
     /**
-     * Factory for input objects
-     *
-     * @param  array|Traversable|InputProviderInterface $inputSpecification
-     * @throws Exception\InvalidArgumentException
-     * @throws Exception\RuntimeException
-     * @return InputInterface|InputFilterInterface
+     * {@inheritdoc}
      */
     public function createInput($inputSpecification)
     {
-        if ($inputSpecification instanceof InputProviderInterface) {
-            $inputSpecification = $inputSpecification->getInputSpecification();
+        // Convert config
+        $inputSpecification = $this->extractParam($inputSpecification);
+        if ($inputSpecification instanceof  InputInterface) {
+            return $inputSpecification;
         }
-
-        if (!is_array($inputSpecification) && !$inputSpecification instanceof Traversable) {
-            throw new Exception\InvalidArgumentException(sprintf(
-                '%s expects an array or Traversable; received "%s"',
-                __METHOD__,
-                (is_object($inputSpecification) ? get_class($inputSpecification) : gettype($inputSpecification))
-            ));
-        }
-        if ($inputSpecification instanceof Traversable) {
-            $inputSpecification = ArrayUtils::iteratorToArray($inputSpecification);
-        }
-
-        $class = Input::class;
-
-        if (isset($inputSpecification['type'])) {
-            $class = $inputSpecification['type'];
-        }
-
-        $managerInstance = null;
-        if ($this->getInputFilterManager()->has($class)) {
-            $managerInstance = $this->getInputFilterManager()->get($class);
-        }
-        if (!$managerInstance && !class_exists($class)) {
-            throw new Exception\RuntimeException(sprintf(
-                'Input factory expects the "type" to be a valid class or a plugin name; received "%s"',
-                $class
-            ));
-        }
-
-        $input = $managerInstance ?: new $class();
+        // Recover inputFilter
+        $input = $this->getInputFromConfig($inputSpecification, Input::class);
 
         if ($input instanceof InputFilterInterface) {
             return $this->createInputFilter($inputSpecification);
-        }
-
-        if (!$input instanceof InputInterface) {
-            throw new Exception\RuntimeException(sprintf(
-                'Input factory expects the "type" to be a class implementing %s; received "%s"',
-                InputInterface::class,
-                $class
-            ));
         }
 
         if ($this->defaultFilterChain) {
@@ -283,61 +244,135 @@ class Factory
      */
     public function createInputFilter($inputFilterSpecification)
     {
-        if ($inputFilterSpecification instanceof InputFilterProviderInterface) {
-            $inputFilterSpecification = $inputFilterSpecification->getInputFilterSpecification();
-        }
-
-        if (!is_array($inputFilterSpecification) && !$inputFilterSpecification instanceof Traversable) {
-            throw new Exception\InvalidArgumentException(sprintf(
-                '%s expects an array or Traversable; received "%s"',
-                __METHOD__,
-                (is_object($inputFilterSpecification) ? get_class($inputFilterSpecification) : gettype($inputFilterSpecification))
-            ));
-        }
-        if ($inputFilterSpecification instanceof Traversable) {
-            $inputFilterSpecification = ArrayUtils::iteratorToArray($inputFilterSpecification);
-        }
-
-        $type = InputFilter::class;
-
-        if (isset($inputFilterSpecification['type']) && is_string($inputFilterSpecification['type'])) {
-            $type = $inputFilterSpecification['type'];
-            unset($inputFilterSpecification['type']);
-        }
-
-        $inputFilter = $this->getInputFilterManager()->get($type);
+        // Convert config
+        $inputFilterSpecification = $this->extractParam($inputFilterSpecification);
+        // Recover inputFilter
+        $inputFilter = $this->getInputFromConfig($inputFilterSpecification);
 
         if ($inputFilter instanceof CollectionInputFilter) {
-            $inputFilter->setFactory($this);
-            if (isset($inputFilterSpecification['input_filter'])) {
-                $inputFilter->setInputFilter($inputFilterSpecification['input_filter']);
-            }
-            if (isset($inputFilterSpecification['count'])) {
-                $inputFilter->setCount($inputFilterSpecification['count']);
-            }
-            if (isset($inputFilterSpecification['required'])) {
-                $inputFilter->setIsRequired($inputFilterSpecification['required']);
-            }
-            return $inputFilter;
+            $this->configCollectionInputFilter($inputFilter, $inputFilterSpecification);
         }
 
         foreach ($inputFilterSpecification as $key => $value) {
-            if (null === $value) {
+
+            if (null === $value || is_string($value) || is_scalar($value) || $key === 'input_filter') {
                 continue;
             }
 
-            if (($value instanceof InputInterface)
-                || ($value instanceof InputFilterInterface)
-            ) {
-                $input = $value;
-            } else {
-                $input = $this->createInput($value);
-            }
+            $this->validateInput($value);
 
-            $inputFilter->add($input, $key);
+            $inputFilter->add(
+                is_array($value) ? $this->createInput($value) : $value,
+                is_array($value) ? (isset($value['name'])? $value['name'] : $key) : $key
+            );
         }
 
         return $inputFilter;
+    }
+
+    /**
+     * @param $specification
+     * @return array
+     */
+    protected function extractParam($specification)
+    {
+        if ($specification instanceof  InputInterface
+            || $specification instanceof InputFilterInterface
+            || $specification instanceof CollectionInputFilter)
+        {
+            return $specification;
+        }
+
+        if ($specification instanceof InputFilterProviderInterface) {
+            $specification = $specification->getInputFilterSpecification();
+        }
+
+        if ($specification instanceof InputProviderInterface) {
+            $specification = $specification->getInputSpecification();
+        }
+
+        if (!is_array($specification) && !$specification instanceof Traversable) {
+            throw new Exception\InvalidArgumentException(sprintf(
+                '%s expects an array or Traversable; received "%s"',
+                __METHOD__,
+                (is_object($specification) ? get_class($specification) : gettype($specification))
+            ));
+        }
+
+        if ($specification instanceof Traversable) {
+            $specification = ArrayUtils::iteratorToArray($specification);
+        }
+
+        return $specification;
+    }
+
+    /**
+     * @param array $config
+     * @param string $default
+     * @return \Zend\InputFilter\InputFilterInterface|\Zend\InputFilter\InputInterface
+     */
+    protected function getInputFromConfig(array $config, $default = InputFilter::class)
+    {
+        $inputFilter = $default;
+
+        if (isset($config['type']) && is_string($config['type'])) {
+            $inputFilter = $config['type'];
+        }
+
+        if (!$this->getInputFilterManager()->has($inputFilter)) {
+            throw new Exception\RuntimeException(sprintf(
+                'Input factory expects the "type" to be a valid class or a plugin name; received "%s"',
+                $inputFilter
+            ));
+        }
+
+        return $this->getInputFilterManager()->get($inputFilter);
+    }
+
+    /**
+     * @param $value
+     * @return bool
+     */
+    protected function validateInput($value)
+    {
+        if ($value instanceof InputInterface
+            || $value instanceof InputFilterInterface
+            || $value instanceof CollectionInputFilter)
+        {
+            return true;
+        }
+
+        if (!is_array($value)) {
+            throw new Exception\InvalidArgumentException(sprintf(
+                '%s expects an array; received "%s"',
+                __METHOD__,
+                (is_object($value) ? get_class($value) : gettype($value))
+            ));
+        }
+
+        return true;
+    }
+
+    /**
+     * @param CollectionInputFilter $inputFilterCollection
+     * @param array $config
+     * @return CollectionInputFilter
+     */
+    protected function configCollectionInputFilter(CollectionInputFilter $inputFilterCollection, array $config)
+    {
+        $inputFilterCollection->setFactory($this);
+        if (isset($config['input_filter'])) {
+            $inputFilterCollection->setInputFilter(is_array($config['input_filter']) ?
+                    $this->createInputFilter($config['input_filter']) : $config['input_filter']
+            );
+        }
+        if (isset($config['count'])) {
+            $inputFilterCollection->setCount($config['count']);
+        }
+        if (isset($config['required'])) {
+            $inputFilterCollection->setIsRequired($config['required']);
+        }
+        return $inputFilterCollection;
     }
 
     /**

@@ -41,9 +41,11 @@ class InputFilterPluginManager extends AbstractPluginManager
      * @var string[]
      */
     protected $factories = [
+        Input::class                            => InvokableFactory::class,
         InputFilter::class                      => InvokableFactory::class,
         CollectionInputFilter::class            => InvokableFactory::class,
         // v2 canonical FQCN
+        'zendinputfilterinput'                  => InvokableFactory::class,
         'zendinputfilterinputfilter'            => InvokableFactory::class,
         'zendinputfiltercollectioninputfilter'  => InvokableFactory::class,
     ];
