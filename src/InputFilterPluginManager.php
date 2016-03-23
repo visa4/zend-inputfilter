@@ -28,6 +28,11 @@ class InputFilterPluginManager extends AbstractPluginManager
      * @var string[]
      */
     protected $aliases = [
+        'input' => Input::class,
+        'Input' => Input::class,
+        'fileinput' => FileInput::class,
+        'fileInput' => FileInput::class,
+        'FileInput' => FileInput::class,
         'inputfilter' => InputFilter::class,
         'inputFilter' => InputFilter::class,
         'InputFilter' => InputFilter::class,
@@ -42,10 +47,12 @@ class InputFilterPluginManager extends AbstractPluginManager
      */
     protected $factories = [
         Input::class                            => InvokableFactory::class,
+        FileInput::class                        => InvokableFactory::class,
         InputFilter::class                      => InvokableFactory::class,
         CollectionInputFilter::class            => InvokableFactory::class,
         // v2 canonical FQCN
         'zendinputfilterinput'                  => InvokableFactory::class,
+        'zendinputfilterfileinput'              => InvokableFactory::class,
         'zendinputfilterinputfilter'            => InvokableFactory::class,
         'zendinputfiltercollectioninputfilter'  => InvokableFactory::class,
     ];

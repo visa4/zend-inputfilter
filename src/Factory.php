@@ -261,10 +261,17 @@ class Factory
 
             $this->validateInput($value);
 
-            $inputFilter->add(
-                is_array($value) ? $this->createInput($value) : $value,
-                is_array($value) ? (isset($value['name'])? $value['name'] : $key) : $key
-            );
+            if ($inputFilter instanceof CollectionInputFilter) {
+                $inputFilter->getInputFilter()->add(
+                    is_array($value) ? $this->createInput($value) : $value,
+                    is_array($value) ? (isset($value['name'])? $value['name'] : $key) : $key
+                );
+            } else {
+                $inputFilter->add(
+                    is_array($value) ? $this->createInput($value) : $value,
+                    is_array($value) ? (isset($value['name'])? $value['name'] : $key) : $key
+                );
+            }
         }
 
         return $inputFilter;
